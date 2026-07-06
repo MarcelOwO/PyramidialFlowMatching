@@ -1,0 +1,63 @@
+#+title: Notes on 'Pyramidial Flow Matching for Efficient Video Generative Modeling'
+
+* Abstract:
+
++ Video generation requires modeling a vast spatiotemporal space
+  - this requires significant computational resources and data usage
+
++ To reduce complexity prevailing approaches employ a cascaded architecture
+  - this avoids direct training with full resolution latents
+    - the seperate optimization of each sub-stage hinder knowledge sharing and sacrifices flexibility.
+
++ introduces pyramidal flow matching algorithm
+  - reinterprets denoising trajectory as a series of pyramid stages
+    - only the final stage operates at full resolution
+      - enabling more efficient video generative modeling
+
+  - the flow of different pyramid stages can be interlinked to maintain continuity
+  - craft autoregressive video generation with temporal pyramid to compress the full-resolution history
+  - entire framework can be optimized in an end-to-end manner and with a sungle unified diffusion transformer
+  - extensive experiments demonstate that the method supports generating  high-quality 5-seconds (up to 10s) videos at 768p resolution and 24 fps withing 20.7k A100 GPU training hours.
+
+* Introduction:
+
+- Teaching ai systems to generate various video content plays a vital role in simulating the real-world dynamics and interacting with humand.
+- Cutting edge diffusion models and autoregressive models have made remarkable breakthroughs in generating realistic and long-duration video through scaling of data and computation
+- However this necessitates modeling a significantely large spatiotemporal space, which makes the training of such video generative models computationally and data intensive.
+
+- To ease the computational urden of generating high-dimensional video data, a crucial component is to compress the original video pixels into lower-dimensional latent space using VAE.
+- However regular compression rates (typically 8x) still results in excessive tokens, especially for high-resolution samples
+- Prevalent approaches utilize cascaded architecture to break down the high-resolution generation process into multiple stages, where samples are first created in a highly compressed latent space and then successively upsamples using additional super-resoultion models.
+- Although this avoids directly learning at high resolution and reduces the computational demands, the requirement for exmploying distinct models at different resolutions separately sacrifices flexibility  and scalability
+- Separate optimization of multiple sub-models also hinders the sharing of their acquired knowledge
+
+- Paper presents an efficient video generative modeling framework that transcends the limiatations of previous casceded appoaches.
+- Motivation stems from observation, that initial timesteps in diffusion models are quite noisy and uninformative
+- This suggests that operating at full resolution throughout the entire generation trajectory may not be necessary
+- To this end, the paper reinterpret the original generation trajectory as a series of pyramid stages that operate on compressed representations of different scales.
+- Notably the efficacy of image pyramids has been widely validated for discriminative neural networks and more recently for diffusion models and multimodel LLMs.
+- The paper investigates two types of pyramids:
+  + the sptial pyramid within a frame
+  + temporal one between consecutive frames
+- In such as pyramidial generation trajectory  only the final stage operates at full resolution
+- This drastically reduces redundant computation in earlier timesteps.
+- Main advantages are:
+  + generation trajectores of different pyramid stages are interlinked, with the subsequent stage continueing to generate from the previous ones, which eliminates the need for each stage to regenerate from pure noise in some cascade models
+  + Instead of relying on separate models for each image pyramid, it integrates them into a single unified model for end-to-end optimization, which admits drastically-expedited training with more elegant implementation as validated by experiments
+
+- Base on aforementiond pyromidal representation, the paper introduces novel pyramial flow-matching algorithm, that builds upon recent prevalent flow matching frameworks
+- Specifically, the paper devises a piecewise flow for each pyramid resolution, which together form a generative process from noise to data.
+- The flow withing each pyramid stage takes a similar formulation, interpolating between a picelated (compressed) and noisier latent and a pixelate-free (decompressed) and cleaner latent.
+- Trough the design they can be jointly optimized by the unified flow matching objectve in a single Diffusion Transformer (DiT), allowing simultaneous generation and decompression of visual content without multiple separate models
+- During inference the output of each stage is renoised by a correcitve Gaussian noise that maintains the continuity of the probai
+
+
+
+
+* Related Work:
+
+* Method:
+
+* Experiments:
+
+* Conclusion:
