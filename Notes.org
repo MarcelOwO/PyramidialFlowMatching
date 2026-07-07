@@ -1,6 +1,35 @@
 #+title: Notes on 'Pyramidial Flow Matching for Efficient Video Generative Modeling'
 
-* Abstract:
+* Flow Matching for Generative Modeling:
+
+** Abstract:
+- Built on Continous Normalizing Flows (CFNs)
+- Allows training CNFs at unprecedented scale
+- Presents notion of flow matching (FM), a simulation-free approach for training CNFs based on regressing vector fields of fixed conditional probability paths.
+- Compatible with general family of Gaussian probability paths for transforming between noise and data samples, which subsumes existing  diffusion paths as specific instances.
+- Finds that employing FM with diffusion pths results in a more robust and stable alternative for training diffusion models
+- Opens the dorr to training CNFs with other non-diffusion probability paths, such as Optimal Transport (OT) displacement interpolation to define the conditional probability paths
+
+- These paths ar emore efficient than diffusion paths, provide faster training and sampling and result in better generalization.
+- Training CNFs using Flow Matching on ImageNet leads to consistently better performance than alternative diffusion-based methods in terms of both likelihood and sample quality,
+- Allows fast and reliable sample generation using off-the-shelf numerical ODE solvers
+
+** Introduction:
+
+** Preliminaries:
+
+** Flow Matching:
+
+** Conditional Probability Paths and Vector Fields:
+
+** Related Work:
+
+
+
+
+* Pyramidal Flow Matching for efficient video generative modeling:
+
+** Abstract:
 
 + Video generation requires modeling a vast spatiotemporal space
   - this requires significant computational resources and data usage
@@ -19,7 +48,7 @@
   - entire framework can be optimized in an end-to-end manner and with a sungle unified diffusion transformer
   - extensive experiments demonstate that the method supports generating  high-quality 5-seconds (up to 10s) videos at 768p resolution and 24 fps withing 20.7k A100 GPU training hours.
 
-* Introduction:
+** Introduction:
 
 - Teaching ai systems to generate various video content plays a vital role in simulating the real-world dynamics and interacting with humand.
 - Cutting edge diffusion models and autoregressive models have made remarkable breakthroughs in generating realistic and long-duration video through scaling of data and computation
@@ -49,15 +78,49 @@
 - Specifically, the paper devises a piecewise flow for each pyramid resolution, which together form a generative process from noise to data.
 - The flow withing each pyramid stage takes a similar formulation, interpolating between a picelated (compressed) and noisier latent and a pixelate-free (decompressed) and cleaner latent.
 - Trough the design they can be jointly optimized by the unified flow matching objectve in a single Diffusion Transformer (DiT), allowing simultaneous generation and decompression of visual content without multiple separate models
-- During inference the output of each stage is renoised by a correcitve Gaussian noise that maintains the continuity of the probai
+- During inference the output of each stage is renoised by a correcitve Gaussian noise that maintains the continuity of the probality between stages
+- Furthermore the paper formulates the video generation in an autoregressive manner, iteratively predicting the next video latent conditioned on the generated history.
+- Given the high redundancy in the full-resolution history, the paper curates a temporal pyramid sequence using progressively compresser, lower-resolution history as conditions, which further reduces the number  of tokens and improving training efficiency.
+
+- Collaboration of the spatial and temporal pyramids results in remarkable training efficiency for video generation
+- Compared to commonly used full-sequence diffusion, the papers method significantely reduces the number of video tokens during training(e.g., <=15360 token vs. 119040 tokens for a 10s 241 frames video)
+- Thereby reducing both computational  resouces required and training time
+- By training only on open-source datasets the model generates a high-quality 10-second video at 768p resolution and 24fps
+
+- Summarized:
+
++ pyramidal flow matching, a novel vieo generative modeling algorithm that incorporates both spatial and temporal pyramid representations. Utilizing this frameworks can significantely improve training efficiency while maintaining good video generative quality.
+
++ The proposed unified flow matching objective facilitates joint training of pyramid stages in a single Diffusion Transformer (DiT), avoiding the separate optimization of multiple models. The support for end-to-end training further enhances its simplicity and scalability.
+
++ We evaluate its effectiveness of VBench and EvalCrafter, with highly competitve performance among video generative models trained on public datasets.
 
 
 
 
-* Related Work:
+** Related Work:
+***  Video Generative Models:
+- Rapid Progress with autoregressive models and diffusion models.
+- Notable breakthrough is the high-didelity video diffusion models by scaling DiT pre-training, but they iduce significant training costs for long video
+- Alternative line of research integrates diffusion models with autoregressive modeling to natively support long video generation but is still limited in context length and training efficiency.
+- Paper advances both approaches in terms of efficiency from a compression perspective, featuring a spatially compressed pyramidal flow and temporally compressed pyramidal history.
 
-* Method:
+*** Image Pyramids:
+- Have been studied extensively in visual representation learning
+- Idea is explored by cascaded diffusion models that first generate at low resolution and then perform super-resolution and later extended to video
+- Requires training several separate models, which prevents knowledge sharing
+- Unified modeling solutions for pyramids include hierachical architectures or via next-token prediction, but involve architecture changes
+- Instead paper proposes a simple flow matching object that allows joint training of pyramids, thus facilitating efficient video generative modeling.
 
-* Experiments:
+** Method:
 
-* Conclusion:
+** Experiments:
+
+
+* PyramidWan: On Making Pretrained Video Model Pyramdial for Efficient Inference:
+
+** Abstract:
+
+-
+
+** Introduction:
