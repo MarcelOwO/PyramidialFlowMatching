@@ -3,18 +3,24 @@
 * Flow Matching for Generative Modeling:
 
 ** Abstract:
-- Built on Continous Normalizing Flows (CFNs)
+- Built on Continuous Normalizing Flows (CFNs)
 - Allows training CNFs at unprecedented scale
 - Presents notion of flow matching (FM), a simulation-free approach for training CNFs based on regressing vector fields of fixed conditional probability paths.
 - Compatible with general family of Gaussian probability paths for transforming between noise and data samples, which subsumes existing  diffusion paths as specific instances.
-- Finds that employing FM with diffusion pths results in a more robust and stable alternative for training diffusion models
-- Opens the dorr to training CNFs with other non-diffusion probability paths, such as Optimal Transport (OT) displacement interpolation to define the conditional probability paths
-
-- These paths ar emore efficient than diffusion paths, provide faster training and sampling and result in better generalization.
+- Finds that employing FM with diffusion paths results in a more robust and stable alternative for training diffusion models
+- Opens the door to training CNFs with other non-diffusion probability paths, such as Optimal Transport (OT) displacement interpolation to define the conditional probability paths
+- These paths are more efficient than diffusion paths, provide faster training and sampling and result in better generalization.
 - Training CNFs using Flow Matching on ImageNet leads to consistently better performance than alternative diffusion-based methods in terms of both likelihood and sample quality,
 - Allows fast and reliable sample generation using off-the-shelf numerical ODE solvers
 
 ** Introduction:
+- deep generative models are a class of deep learning algorithms aimed at estimating and sampling from an unkown data distribution
+- CFN's (Continuous Normalizing Flows) are capable of modeling arbitrary probability paths and are in particular known to encompass the probability paths modeled by diffusion processes
+- Aside from diffusion, no scalable training CNF training algorithm are known
+- Maximum Likelihood training requires expensive numerical ODE simulations, while existing simulation -free methods either involve intractable integrals or biased gradients
+- Flow Matching objective: a simple and intuitive training objective to regress onto a target vector field that generates a desired probability path.
+- Construct such vector fields through per-example (i.e. conditional) formulations, then inspired by denoising score matching, show that per-example training objective, termed conditional flow matching (CFM) provides equivalent gradients and does not require explicit knowledge of the intractable target vector field
+- Example of general family of per-example probability ...
 
 ** Preliminaries:
 
@@ -25,10 +31,7 @@
 ** Related Work:
 
 
-
-
 * Pyramidal Flow Matching for efficient video generative modeling:
-
 ** Abstract:
 
 + Video generation requires modeling a vast spatiotemporal space
@@ -47,6 +50,7 @@
   - craft autoregressive video generation with temporal pyramid to compress the full-resolution history
   - entire framework can be optimized in an end-to-end manner and with a sungle unified diffusion transformer
   - extensive experiments demonstate that the method supports generating  high-quality 5-seconds (up to 10s) videos at 768p resolution and 24 fps withing 20.7k A100 GPU training hours.
+
 
 ** Introduction:
 
@@ -97,9 +101,8 @@
 
 
 
-
 ** Related Work:
-***  Video Generative Models:
+*** Video Generative Models:
 - Rapid Progress with autoregressive models and diffusion models.
 - Notable breakthrough is the high-didelity video diffusion models by scaling DiT pre-training, but they iduce significant training costs for long video
 - Alternative line of research integrates diffusion models with autoregressive modeling to natively support long video generation but is still limited in context length and training efficiency.
@@ -112,15 +115,123 @@
 - Unified modeling solutions for pyramids include hierachical architectures or via next-token prediction, but involve architecture changes
 - Instead paper proposes a simple flow matching object that allows joint training of pyramids, thus facilitating efficient video generative modeling.
 
+
 ** Method:
+*** Preliminaries on flow matching
+Similar to diffusion models flow generative models aim to learn a velocity field v_{t} that maps random noise x_{0} \sim N(0,I) to data samples x_{1} \sim q via an ordinary differntial equation ODE.
+
+$\frac{dx_{t}_{}}{dt} = v_{t}(x_{t})$
+
+Flow matching frameworks which provides a simple simulatin  -free training objective for flow generateive models by directly regressing the volocity v_{t} on a conditional vector field u_{t} (\cdot| x_{1})
+
+$\mathbb{E}_{t,q(x_{t}_{}|x_{1})}|| v_{t}(x_{t}) - u_{t}_{}(x_{t}|x_{1})||^{2}$
+
+with $u_{t}(\cdot|x_{1})$ determines a conditional probability path $p_{t}(\cdot|x_{1})$ towards data sample x_{1}
+An effective choice of the conditional probability path is linear interpolation of data and noise:
+
+$x_{t}=tx_{1}+(1-t)x_{0}$
+$x_{t}\sim\mathcal{N}(tx_{1},(1-t)^{2}I)$,
+
+and u(x_{t}|x_{1})=x_{1} - x_{0} Notably, flow matching can be flexibly extended to interpolate between distributions other than standard Gaussians. This enables us to devise a new flow matching algorithm that specializes in reducint the computational cost of video generative modeling.
+
+*** Pyramidal Flow Matching
+
+Initial generation steps are usually very noisy and less informative and thus may not need to operate at full resolution latents.
+=> Study spatially compressed pyramidal flow
+
+To alleviate redundant computation in early steps, interpolate flow between data and compressed low-resolution noise. Let \oplus denote teh interpolation between  latenst of different resolutions, and let there be K resolutions, each halving the previous one, then our flow may be expressed as
+
+$\hat{x}_{t}=tx_{1}\oplus(1-t)Down(x_{0},2^{K})$
+
+Where Down(\cdot,\cdot) is a downsampling function. Since the interpolation concerns varying dimensional x_{t}, we decompress it as a piecewise flow that divides [0,1] into K time windows, where each window interpolates between  successive resolutions. Fo the k-th time window [s_{k},e_{k}], let $t' =(t-s_{k})/(e_{k}-s_{k})$ denote the rescaled timestep, then the flow within it follows:
+
+$\hat{x}_{t}=t'Down(x_{ek},2^{k})+(1-t')Up(Down(x_{sk},s^{k+1}))$,
+
+where Up(\cdot) is an upsampling funciton. This way , only the last stage is performed at full resolution, while most stages are performaned at lower resolutions using less computation. Under a uniform stage partioining the idea of spatial pyramid reduces the coputational cost to a factor of near 1/K. Bwlo, we describe the inference, respectively.
+
+**** Unified Training
+
+In teh construciton of pyramidal flow, out main concern is unified modeling of different stages, as previous works all require training multiple models for seperate generation and super-resolution, which hinders, knowledge sharing.
+
+To unify the objectives of generation and decompression/super-resolution, we curate teh probability path by  interpolatin between different noise levels and resolutions. It starts with a more noisy and pixelated latent upsampled from a lower resolution, and yields cleaner and fine-grained results at a  higher resolution, illustrated. Formally the conditional probability path is defined by:
+
+End: $\hat{x}_{e_{t}}|x_{1}\sim\mathcal{N}(e_{k}Down(x_{1},2^{k}),(1-e_{k})^{2}I)$
+Start: $\hat{x}_{s_{k}}=s_{k}Up(Down(x_{1},2^{k+1}^{}_{})),(1-s_{k})n$
+
+Thereafter, we can regress the flow model v_{t} on the conditional vector field $u_{t}(\hat{x}_{t}|x_1_{}) = \hat{x}_{e_{k}}-\hat{x}_{s_{k}}}$ with the following flow matching objective to unify generation and decompression:
+
+$\mathbb{E}_{k,t,(\hat{x}_{e_{k}},\hat{x}_{s_{k}}})|| v_{t}(\hat{x}_{t})-(\hat{x}_{e_{k}}-\hat{x}_{s_{k}})||^{2}$
+
+**** Inference with renoising
+During inference, standard sampling algorithms can be applied within each pyramd stage. However, we must carefully handle the jump points between successive pyramid stages of different resolutions to ensure continuity of the probability path.
+
+To ensure continuity, we first upsample the previous low-resolution endpoint with nearest or billinear resampling. The result, as a linear combination of the input, follows a Gaussian distribution:
+
+$\hat{x}_{s_{k}}=\frax{s_{k}}{e_{k+1}}Up(\hat{x}_{ek+1})+\alpha n'$, st \quad s.t. $n'\sim\mathcal{N}(0,\Sigma')$,
+where the rescaling coefficient s_{k}/e_{k+1} allows matching the means of these distributions, and teh corrective noise n' with a weight of \alpha  allows matching their covariance matrices.
+
+To derive the corrective noise and its covanriance, we consider a simplest scenario with nearest  neighbour upsampling. In this case, \Sigma has a blockwise structure with non-zero elements only in the 4x4 blocks along the diagonal (corresponding to those upsampled form the same pixel). Then, it can be inferred that the corrective noise's covariance matrix
+\Sigma'  also has a blockwise structure:
+
+$\Sigma_{block}= \begin{pmatrix}1 & 1 & 1& 1& \\ 1 & 1 & 1& 1 \\ 1 & 1 & 1 & 1 \\ 1 & 1 & 1& 1\end{pmatrix} \Rightarrow \Sigma'_{block}= \begin{pmatrix} 1 & \gamma & \gamma & \gamma \\ \gamma &1 & \gamma & \gamma \\ \gamma & \gamma & 1 & \gamma \\ \gamma & \gamma & \gamma & 1 \end{pmatrix}$,
+where \Sigma'_{block} contains negative elements \gamma \in [-1/3,0]^{1} to reduce the correlation within each block, as illustrated in Fig.2b. Since it is desirable to maximally  preserve teh signals at each jump point, we opt to add a small amount of noise with \gamma = -1/3 such that it is most specialized for decorreltaion. Substituting this into the above gives the update rule at jump points.
+$\hat{x}_{s_{k}}=_{}\frac{1+s_{k}}{2}Up(\hat{x}_{e_{k+1}})+\frac{\sqrt{3}(1-s_{k})}{2}n'$
+
+with $e_{k+1} = 2_{s_{k}}/(1+s_{k})$. The Resulting inference process with renoising shows in Algorithm 1.
+
+*** Pyramidal Temporal Condition
+Beyond the spatial complexity addressed in above sections, video presents another significant challenge due to its temporal length. The prevailing full-sequence diffusion methods generate all video frames simultaneously, restricting them to fixed-length generation (consists with training). In contrast, the autoregressive video generation paradigm supports flexible-length generation during inference. Recent advancements have also demonstrated its effectiveness in creating long-duration video content. However, their training is still severely limited by the computational complexity arising form the full-resolution long-history condition.
+
+We observe that there is a high redundancy in full-resolution history conditions. For example, earlier frames in a video tend to provide high-level semantic conditions and are less related to appearance details. This motivates us to use compressed, lower-resolution history for autoregressive video generation. As shown in Fig. 3a we adopt a history condition of gradually increasing resolutions:
+
+$\quad...\to Down(x_{t'}^{i-2},2^{k+1}) \to Down(x_{1}^{i-1},2^{k}}_{})\to \hat{x}^{i}_{t}}^{}$
+where the superscripts are the history latent index and teh subscript t' indicates small noise added to history latents in training to mitigate error accumulation with autoregressive generation, as in (). After training, we use clean generated frames for inference:
+
+$\quad... \to Down(x_{1}^{i-2}},2^{k+1}) \to Down(x_{1}^{i-1}},s^{k})\to \hat{x}_{t}^{i}$
+
+The above design significantly reduces the computational memory overhead of video generative pretraining. Let there be T history latents over K lower resolution, then most frames are computed at the lowest resolution of 1/2^{K}, which reduces the number of training tokens by up to 1/4^{K} times. As a result, training efficiency improves by up to 16^{K}/T times.
+
+*** Practical Implementation
+
+In this section, we show that the above pyramid designs can be easily implemented using standard Transformer architecture and pipelines. This is crucial for efficient and scaleable video generative pre-training based on existing acceleration frameworks.
+
+Unlike previous methods that utilize factorized spatial and temporal attention to reduce computational complexity, we directly employ full sequence attention, thanks to much fewer tokens required by our pyramidal representation. Furthermore, blockwise causal attention is adopted in each transformer layer, ensuring that each token cannot attent to its subsequent frames. The ablation results in Appendix C.2 illustrate that such causual attention design is crucial for autoregressive video generation. Another important design choice is the postion encoding, as the pyramid designs introduce multiple spatial resolutions. As shown in Fig. 3b, we exterpolate position encoding in the spatial pyramid for better fine-grained detail, while interpolating it in the temporal pyramid input to spatially align the history conditions.
+
+During training, different pyramidal stages are uniformly sampled in each update iteration. The autoregressive nature of our method inherently supports joint training of images and videos, since the first frame in a video acts as an image. We pack training samples with varying token counts together to form the length-balanced training batch following Path n' Pack. After training, our method natively possesses the capability of text-to-video and text-conditioned image-to-video generation. During inference sampling, the classifier-free guidance strategy can be employed to enhance temporal consistency and motion smoothness of the generated video.
+
 
 ** Experiments:
+*** Experimental Settings
+~Training Dataset.~ Our model is trained on a mixed corpus of open-source image and video datasets. For images, we utilize a high-aesthetic subset of LAION-5B, 11M from CC-12M, 6.9M non-blurred subset of SA-1B, 4.4M from JourneyDB, and 14M publicly available synthetic data. For video data, we incorporate the WebVid-10M, OpenVid-1M, and another 1M high-resolution non-watermark video primarily from the Open-Sora Plan. After postprocessing, around 10M single-shot videos are available for training.
+
+~Evaluation Metrics.~ We utilize the VBench and EvalCrafter for quantitative performance evaluation. VBench is a comprehensive benchmark that includes 16 fine-grained dimensions to systematically measure both motion quality and semantic alignment of video generative models. EvalCrafter is another large-sacle evaluation benchmark including around 17 objective metrics for assessing  video generation capabilities. In addition to automated evaluation metrics, we also conducted a study with human participants to measure the human preference for out generated video. The compared baselines are summarized in Appendix B.
+
+~Implementation Details.~ We utilize the prevailing MM-DiT architecture from SD3 Medium as the based model, with 2B parameters in total. It employs sinusoidal position  encoding in the spatial dimensions. A for the temporal dimension, the 1D Rotary Position Embedding (RoPE) is added to support flexible training with different video durations. In addition, we use a 3D Variational Autoencoder (VAE) to compress video both spatially and temporally with a downsampling ration of 8x8x8. It shared a similar structure with MAGVIT-v2 and is trained from scratch on teh WebVid-10M dataset. The number of pyramd stages is 4 in all the experiments. Following, we add some corruptive noise of strength uniformly sampled from [0,1/3] to the history pyramid conditions, which is critical for mitigating the autoregressive generation degradation.
+
+*** Efficiency:
+The proposed pyramidal flow matching framework significantly reduces the computational and memory overhead in video generation training. Consider a video with T frame latents, where each frame contains N tokens at the original resolution. The full-sequence diffusion has T N input tokens in DiT and requires T^{2}N^{2}computations. In contrast, our method uses only approximately TN/4^{K} tokens and T^{2}N^{2}/16^{K} computations even for the final pyramid stage, which significantly improves the training efficiency. Specifically, it takes only 20.7k A 100 GPU hours to train a 10s video generation model with 241 frames. Compared to existing models that require signifant training resources, out method achieves superior video generation performance with much fewer computations. For example, the Open-Sora 1.2 requires 4.8K Ascend and 37.8k H100 hours to train the generation of only 97 video frames, consuming more than two times the computation of our approach, yet producing video of worse quality. At inference, out model takes just 56 seconds to create a 5-second 384p video clip, which is comparable to full-sequence diffusion couterparts.
+
+*** Main Results
+
+~Text-to-Video Generation.~ We first evaluate the text-to-video generation capability of the proposed method. For each text prompt, a 5-second 121 frames video is generated for evaluation. The detailed quantitative results on VBench and EvalCrafter are summarized in Tables 1 and 2 respectively. Overall, out method surpasses all the compared open-sourced video generation baselines in these two benchmarks. Even with only publicly accessible video data in training. it achieved comparable performance to commercial competitors trained on much larger proprietary data like Kling and Gen-3 Alpha. In particular, we demonstrated exceptional performance in quality score (84.74 vs 84.11 of Gen-3), and motions smoothness in VBench, which are crucial criteria in feflectin the visual quality of generated videos. When evaluated in EvalCrafter, out method achieves better visual and motion quality scores than most compared methods. The semantic score is relatively lower than others, mainly because we use coarse-grained synthetic captions, which can be improved with more accurate video captioning.
+
+We also present some generated 5-10 second videos in Fix.5 showing cinematic visual quality and validate the efficiency of pyramidal flow matching. More visualizations are provided in Appendix C.3
+
+~User study.~ While quantative evaluation score reflect the video generation capability to some extent, they may not align with human preferences for visual quality. Hence, an additional user study is conducted to compare out performance with six baseline models, including CogVideoX and Kling. We utilized 50 prompts sampled from VBench and asked 20+ participants to rank each model according to the aesthetic quality, motion smoothness, and semantic alignment of the generateed videos. As seen in Section 4.3, out method is preferred over open-source models such as Open-Sora and CogVideoX-2B especially in terms of motion smoothness. This is due to the substantial token savings achieved py pyramidal flow matching, enabling generation of 5-seconds (up to 10-seconds) 768p videos at 24 fps, while the baselines usually support video synthesis of similar length only at 8fps. The detailed user study settings are presented in Appendix B.
+
+~Image-to-Video Generation.~ Thanks to the autoregressive property of out model and the causal attention design, the first frame of each video acts similarly to an image condition during the training. Consquently, although our model is optimized solely for text-to-video generation, it naturally accommodates text-conditioned image-to-video generation during inference. Given an image and a textual prompt, it is able to animate the static input image by autoregressively predicting the furture frames without further fine-tuning. IN fig. 6, we illustrate qualitative examples of its image-to-video generation performance, where each example consists of 120 newly synthesized frames spanning a duration of 5 seconds. As can be seen, our model successfully predicts reasonable subsequent motion, endowing the images with rich temporal dynamic information. More generated video examples are best viewed on our project page at https://pyramid-flow.github.io.
+
+*** Ablation Study
+
+In this section, we conduct ablation studies to validate the crucial component of our methods, including the spatial pyramid in denoising trajectory and teh temporal pyramid in history condition. Due to limited space, the ablations for other design choices are provided in Appendix C.2.
+
+~Effectiveness of spatial pyramid.~ In the generation trajectory of the proposed spatial pyramid, only the final stage operates at full resolution, which significantly reduces the number of tokens for most denoising timesteps. With  the same computational resources. it can handle more samples per training batch, greatly enhancing the convergence rate. To validate its efficiency, we designed a baseline that employs the standard flow matching objective for training text-to-image generation in batch, hyperparameter configurations , and model architecture to ensure fairness. The performance comparison is illustrated in Fig 7. It can be observed that the variant using pyramidal flow demonstrates superior visual quality and promp-following capability. We further quantitatively evaluate the FID metric of these methods on the MS-COCO benchmark by randomly sampling 3K prompts. The FID performance curve over training steps is presented on the right of Fig.7. Compared to standard flow matching, the converged rate of our method is significantly improved.
+
+~Effectiveness of tempral pyramd.~ As mentionedin Section 4.2 the temporal pyramd design can be  drastically reduce the computation demands compared to traditional full-sequence diffusion. Similar to the spatial pyramid, we also established a full-sequence diffusion baseline under the same experiment setting to investigate its training efficiency improvement. The qualitative comparison with the baseline is presented inf Fig 8., where the generated videos of our pyramidal variant demonstrate much better visual quality and temporal consistency under the same training steps. In contrast, the full-sequence diffusion baseline is far from vergence. It fails to produce coherent motin, leading to fragmented visual details and severe artifacts in the generated videos. This performance gap clearly highlights the training acceleration achieved by our method in video generative modeling.
 
 
-* PyramidWan: On Making Pretrained Video Model Pyramdial for Efficient Inference:
+** Conclusion
 
-** Abstract:
+This work presents an efficient video generative modeling framework based on pyramidal visual representations. In contrast to cascaded diffusion models that use separate models for different image pyramids to improve efficiency, we propose a unified pyramidal flow matching objective that simultaneously generates and decompresses visual content across pyramid stages with a signale model, effectively facilitating knowledge sharing. Furthermore, a temporal pyramid design is introduced to reduce computational redundancy in the full-resolution history of a video. The proposed method is extensively evaluated on VBench and EvalCrafter, demonstrating advantageous performance.
 
--
-
-** Introduction:
+~Reproducibility Statement.~ Our code and models are open-sourced at https://pyramid-flow.github.io. The experimental settings are detailed in Section 4.1 and Appendix B.

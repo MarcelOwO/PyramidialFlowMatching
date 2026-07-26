@@ -1,0 +1,11 @@
+[project]
+name = "pyramidialflowmatching"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "diffusers>=0.39.0",
+    "torch>=2.13.0",
+    "transformers>=5.13.0",
+]

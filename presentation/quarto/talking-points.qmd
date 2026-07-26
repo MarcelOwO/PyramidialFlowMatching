@@ -1,0 +1,213 @@
+---
+title: "Pyramidal Flow Matching"
+subtitle: "Presenter talking points · companion deck"
+author: "Marcel Sigl"
+institute: "Advanced Machine Learning · 2026"
+html-math-method: plain
+format:
+  revealjs:
+    theme: [simple, theme.scss]
+    slide-number: c/t
+    transition: none
+    controls: true
+    progress: true
+    center: false
+    width: 1280
+    height: 720
+    margin: 0.065
+    embed-resources: true
+    title-slide-attributes:
+      data-background-gradient: "radial-gradient(circle at 88% 8%, rgba(126, 139, 166, .42), transparent 36%), linear-gradient(135deg, #10151e 0%, #273246 70%, #4b4035 100%)"
+---
+
+## Before presenting {.talk-slide data-section="Setup"}
+
+- From the repository root, run `cd Pyramid-Flow` and then `uv run app.py`.
+- Open the local Gradio address and keep the browser tab ready behind the slides.
+- Trigger the first generation before the demo slide; startup and inference may take a while.
+- Test the projector contrast in the actual room and keep this companion deck on a second screen.
+- If generation is still running, recap the three spatial stages while the audience waits.
+- Keep `assets/demo.mp4` available as a fallback if the live interface fails.
+
+::: {.talk-callout}
+Start the live run when entering the experiments section of the main deck.
+:::
+
+## Main slide 01 · Title {.talk-slide data-section="Opening"}
+
+- Opening question: why pay full-resolution cost while the latent is still mostly noise?
+- Say: “Pyramid Flow uses one generative trajectory whose spatial resolution increases over time.”
+- The same multiscale idea also compresses older temporal context.
+- Talk order: algorithm, repository implementation, then live demonstration.
+
+<div class="pace-cue"><span>0:00–0:30</span></div>
+
+## Main slide 02 · Paper structure {.talk-slide data-section="Roadmap"}
+
+- The talk follows the paper’s structure rather than the implementation order.
+- Motivation and flow matching establish why a multiresolution path is possible.
+- The central method consists of spatial stages, unified training, and re-noised transitions.
+- The video extension compresses older history while maintaining causal generation.
+- Experiments and repository code show what the abstraction buys in practice.
+
+<div class="pace-cue"><span>0:30–1:00</span><em>compress to one sentence if late</em></div>
+
+## Main slide 03 · Earlier design compromises {.talk-slide data-section="Introduction"}
+
+- A 10-second clip at 24 fps is already 240 frames before repeated model evaluations.
+- The VAE compresses pixels, but the DiT still revisits a large spatiotemporal token grid.
+- A single full-resolution path pays the largest attention and memory cost from the first noisy state, limiting batch size, duration, or output resolution.
+- Cascades avoid some of that cost, but introduce separate objectives and checkpoints with weaker parameter sharing between stages.
+- Pyramid Flow is trying to keep the multiscale savings while sharing one end-to-end model.
+
+<div class="pace-cue"><span>1:00–2:10</span></div>
+
+## Main slide 04 · Early states need less detail {.talk-slide data-section="Introduction"}
+
+- Read Figure 1 from left to right.
+- In the conventional path, all frames remain at full spatial resolution even when dominated by noise.
+- In the proposed path, global composition appears on a coarse grid before fine detail is introduced.
+- This is not a separate super-resolution cascade.
+- The stages form one continuous probability path trained by one model.
+
+<div class="pace-cue"><span>2:10–3:10</span></div>
+
+## Main slide 05 · How flow matching works {.talk-slide data-section="Preliminaries"}
+
+- Training starts with Gaussian noise, a real video latent, and one random time between them.
+- The intermediate state is `x_t = (1-t)x_0 + tx_1`; the supervised target is the endpoint difference `x_1 - x_0`.
+- Training therefore needs one sampled point rather than simulating a complete denoising chain.
+- Generation starts from noise and repeatedly evaluates the learned velocity while taking Euler steps.
+- Connection to familiar models: iterative like diffusion, but the generative path is a deterministic ODE like a continuous flow.
+- This formulation matters here because a path segment can connect representations at different resolutions.
+
+<div class="pace-cue"><span>3:10–5:00</span></div>
+
+## Main slide 06 · Spatial stages and boundaries {.talk-slide data-section="Method"}
+
+- Divide one generative time interval into quarter-, half-, and full-resolution sections.
+- Stage 1 handles composition and coarse motion; stage 2 resolves shapes and layout; stage 3 adds texture.
+- One shared DiT works across all three sections—the timestep identifies the current stage.
+- The hard part is every boundary: enlarge the grid, preserve the existing signal, and match the next noise covariance.
+- A plain resize is therefore not a valid hand-off to the next stage.
+
+<div class="pace-cue"><span>5:00–6:10</span></div>
+
+## Main slide 07 · Visual progression {.talk-slide data-section="Method"}
+
+- All three clips show the same generated scene after consecutive stages.
+- At 160 × 96: global palette, perspective, composition, and rough motion are already present.
+- At 320 × 192: objects, pedestrians, and scene layout become recognizable.
+- At 640 × 384: edges, texture, faces, and smaller motion appear.
+- Next question: how does one model learn a coherent path across those boundaries?
+
+<div class="pace-cue"><span>6:10–7:00</span></div>
+
+## Main slide 08 · Unified training {.talk-slide data-section="Method"}
+
+- The graph reads left to right: clean video, VAE pyramid, sampled stage and time, coupled endpoints, shared DiT loss.
+- The code is the same operation as the formula beside it: interpolate the endpoints and predict their difference.
+- Notice the repository's sign convention: `target = start_point - end_point` because `r` decreases from 1 to 0.
+- The learning rule is standard flow matching; the stage-specific endpoint construction is the innovation.
+- Shared noise keeps adjacent stage distributions compatible and reduces conflicting paths.
+
+<div class="pace-cue"><span>7:00–8:30</span></div>
+
+## Main slide 09 · Inference with re-noising {.talk-slide data-section="Method"}
+
+- Finish the Euler steps for the current stage before changing resolution.
+- Nearest-neighbor upsampling copies each value into a 2 × 2 block.
+- The signal survives, but the noise becomes perfectly correlated inside that block.
+- The PyTorch excerpt shows the fix: resize, sample block noise, then combine both with `alpha` and `beta`.
+- The added block noise has negative off-diagonal correlation within each 2 × 2 block, counteracting the duplicated upsampled noise.
+- Together with `alpha` and `beta`, that matches the next stage's expected covariance.
+- Without the correction, the next DiT evaluations would be off-distribution.
+
+<div class="pace-cue"><span>8:30–10:00</span></div>
+
+## Main slide 10 · Temporal pyramid {.talk-slide data-section="Video generation"}
+
+- Spatial pyramids reduce the cost of the current unit; conditioning on history is a second token cost.
+- Generation is autoregressive, so only completed units can condition the current one.
+- Older units use a quarter grid—one sixteenth of the full spatial tokens per frame.
+- The most recent unit stays at a half grid because local motion needs more detail.
+- The current unit alone receives the full grid while it is being denoised.
+- Tradeoff: cheaper long context, with a greater risk of long-term identity or scene drift.
+
+<div class="pace-cue"><span>10:00–11:15</span></div>
+
+## Main slide 11 · System architecture {.talk-slide data-section="Video generation"}
+
+- Text encoder produces token-level and pooled prompt embeddings.
+- Causal video VAE maps RGB frames to compact spatiotemporal latents and decodes the final latent.
+- Temporal-pyramid logic packages earlier units at coarse or medium resolution.
+- The shared DiT receives the current noisy latent, past conditions, timestep, and text; it outputs velocity.
+- The Euler scheduler controls stage ranges, numerical steps, upsampling, and block-noise correction.
+- The central model is not smaller or duplicated—the savings come from the token layout around it.
+
+<div class="pace-cue"><span>11:15–12:15</span></div>
+
+## Main slide 12 · Inference code walkthrough {.talk-slide data-section="Project"}
+
+- The excerpt follows the control flow of `generate_one_unit()`.
+- Outer loop: select the timestep schedule for each spatial stage.
+- At later stages: nearest-neighbor upsample, sample block noise, then apply the `alpha`/`beta` correction.
+- Inner loop: prepend the stage's temporal conditions, predict velocity with the DiT, and take one Euler step.
+- Training-side construction lives in `add_pyramid_noise_with_temporal_pyramid()`; this slide focuses on inference.
+
+<div class="pace-cue"><span>12:15–13:15</span><em>skip code detail if late</em></div>
+
+## Main slide 13 · Controlled efficiency evidence {.talk-slide data-section="Experiments"}
+
+- Lead with Figure 7 because it is controlled: the baseline uses the same data, tokens per batch, hyperparameters, and architecture.
+- The pyramid curve reaches much better FID at the same training step; the paper describes almost three times faster convergence.
+- Mechanism: most steps use fewer spatial tokens than full-resolution flow matching.
+- The 20.7k A100 hours, 768p, 24 fps, and five- to ten-second figures describe the main model, not this ablation.
+- Caveat: absolute GPU-hour comparisons still depend on utilization and software.
+
+<div class="pace-cue"><span>13:15–14:30</span></div>
+
+## Main slide 14 · Quality evidence {.talk-slide data-section="Experiments"}
+
+- Read the selected rows rather than every benchmark entry.
+- Gen-3 Alpha reports 82.32 total, 84.11 quality, 75.17 semantic, and 99.23 motion smoothness.
+- VideoCrafter2 reports 80.44 / 82.20 / 73.42 / 97.73; T2V-Turbo reports 81.01 / 82.57 / 74.76 / 97.34 in the same column order.
+- Pyramid Flow reports 81.72 total, 84.74 quality, 69.62 semantic, and 99.12 motion smoothness.
+- Its semantic score is only 69.62, weaker than the comparison systems shown.
+- The comparison supports a narrow claim: efficiency did not erase visual quality, but semantic alignment is not a strength.
+- This is not a controlled comparison: data, scale, and infrastructure differ.
+
+<div class="pace-cue"><span>14:30–15:30</span><em>skip table detail if late</em></div>
+
+## Main slide 15 · Conclusion and limitations {.talk-slide data-section="Conclusion"}
+
+- Central principle: match representation fidelity to the information present in the trajectory.
+- The method shares one model across resolutions and compounds spatial and temporal savings.
+- The same framework supports both text-to-video and image-to-video generation.
+- Stage transitions add mathematical and implementation complexity.
+- Autoregressive generation and compressed history can limit long-range consistency.
+- Final quality still depends on the training data and the underlying DiT.
+- Demo transition: the repository exposes these mechanisms in a runnable interface.
+
+<div class="pace-cue"><span>15:30–16:15</span></div>
+
+## Main slide 16 · Live demo {.talk-slide data-section="Demo"}
+
+- Switch from the holding slide to the already-open Gradio browser tab.
+- Identify the prompt, output settings, and start-generation control.
+- Connect the visible stages to the talk: coarse structure, transition, final refinement.
+- If output is ready: inspect global coherence, motion, and fragile local details.
+- If output is still running: revisit the scheduler and re-noising step.
+- If the live interface fails, play `assets/demo.mp4` and narrate the same checkpoints.
+- Return to the slide deck after the demo instead of ending in the application.
+
+<div class="pace-cue"><span>16:15–19:30</span></div>
+
+## Main slide 17 · Final takeaway {.talk-slide data-section="Closing"}
+
+- Switch back from Gradio to the final slide.
+- Say: “Use coarse representations while uncertainty is high, then add fidelity as structure becomes reliable.”
+- The spatial stages, covariance-matched transitions, and compressed temporal history are implementations of that principle.
+- Invite questions and stop.
+
+<div class="pace-cue"><span>19:30–20:00</span></div>
