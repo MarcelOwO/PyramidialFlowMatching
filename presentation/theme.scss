@@ -42,7 +42,8 @@ $code-bg: #202a3b;
 
 .reveal .title-slide { padding-top: 105px; }
 .reveal .title-slide h1 { color: var(--ink); font-size: 2.25em; letter-spacing: -.055em; line-height: .95; max-width: 750px; text-transform: none; }
-.reveal .title-slide .subtitle { color: var(--teal-dark); font-size: .96em; font-weight: 620; line-height: 1.25; margin-top: 38px; max-width: 760px; }
+.reveal .title-slide .subtitle { color: var(--teal-dark); font-size: .96em; font-weight: 620; line-height: 1.25; margin-top: 64px; max-width: 760px; }
+.reveal .title-slide .subtitle .paper-authors { color: var(--muted); display: block; font-size: .58em; font-weight: 480; letter-spacing: .01em; line-height: 1.4; margin-top: 16px; max-width: 700px; }
 .reveal .title-slide .quarto-title-author-name { color: var(--ink); font-size: .62em; margin-top: 50px; }
 .reveal .title-slide .institute { color: var(--muted); font-size: .48em; letter-spacing: .1em; text-transform: uppercase; }
 .reveal .slide-number { color: #9fb2c3; font-size: 13px; }
@@ -119,6 +120,10 @@ $code-bg: #202a3b;
 .fm-lane.inference small { grid-column: 1 / -1; }
 .fm-lane.inference .fm-steps { margin: 0; }
 .fm-lane.inference p { color: var(--muted); font-size: 15px; margin: 0; }
+.fm-lane.generation { border-left: 5px solid var(--coral); }
+.vae-lanes .fm-lane { padding: 12px 18px; }
+.vae-lanes .train-pipeline { margin: 10px 0 0; }
+
 .model-bridge { display: grid; gap: 12px; grid-template-columns: repeat(3,1fr); margin-top: 14px; }
 .model-bridge span { background: rgba(69,58,45,.86); border-top: 3px solid var(--teal); font-size: 15px; padding: 10px 12px; text-align: center; }
 

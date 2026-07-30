@@ -1,6 +1,6 @@
 ---
 title: "Pyramidal Flow Matching"
-subtitle: "Efficient video generation with spatial and temporal pyramids"
+subtitle: "Efficient video generation with spatial and temporal pyramids<br/><span class='paper-authors'>Paper by Yang Jin, Zhicheng Sun, Ningyuan Li, Kun Xu, Kun Xu, Hao Jiang, Nan Zhuang, Quzhe Huang, Yang Song, Yadong Mu, Zhouchen Lin</span>"
 author: "Marcel Sigl"
 institute: "Advanced Machine Learning · 2026"
 html-math-method: plain
@@ -32,6 +32,16 @@ format:
       data-background-gradient: "radial-gradient(circle at 88% 8%, rgba(126, 139, 166, .42), transparent 36%), linear-gradient(135deg, #10151e 0%, #273246 70%, #4b4035 100%)"
 ---
 
+
+## Outline {.compact-title data-section="Roadmap"}
+
+<div class="roadmap">
+  <div><b>01</b><strong>Motivation + preliminaries</strong><span>Why full-resolution video is expensive, and what flow matching makes possible. <em>§1–2</em></span></div>
+  <div><b>02</b><strong>Spatial pyramidal flow</strong><span>Split one trajectory across resolutions, then train it as one model. <em>§3</em></span></div>
+  <div><b>03</b><strong>Video generation</strong><span>Compress distant history and preserve causality across frame units. <em>§4</em></span></div>
+  <div><b>04</b><strong>Experiments + implementation + demo</strong><span>Controlled evidence for the efficiency claim, the code behind it, then a live demonstration. <em>§5–6</em></span></div>
+</div>
+
 ## Motivation {.compact-title data-section="1 · Introduction"}
 
 <img class="paper-figure" src="assets/motivation.jpg" alt="Comparison of full-resolution video diffusion and pyramidal flow matching" />
@@ -45,31 +55,6 @@ format:
 Source: Jin et al., “Pyramidal Flow Matching for Efficient Video Generative Modeling,” Fig. 1.
 :::
 
-::: {.notes}
-- Generating video is expensive. A ten second clip at 24 frames per second is 240 frames, and the model processes all of them many times.
-- On the left: a normal video diffusion model. It uses the full resolution for the whole process, even at the very start, when the latent is basically pure noise.
-- At that early point there is almost no real detail, so the high resolution is wasted.
-- On the right: pyramidal flow. It starts small and only increases the resolution once real structure has appeared.
-- Important: this is not a separate upscaling model. Everything happens inside one generation process.
-:::
-
-## Outline {.compact-title data-section="Roadmap"}
-
-<div class="roadmap">
-  <div><b>01</b><strong>Motivation + preliminaries</strong><span>Why full-resolution video is expensive, and what flow matching makes possible. <em>§1–2</em></span></div>
-  <div><b>02</b><strong>Spatial pyramidal flow</strong><span>Split one trajectory across resolutions, then train it as one model. <em>§3</em></span></div>
-  <div><b>03</b><strong>Video generation</strong><span>Compress distant history and preserve causality across frame units. <em>§4</em></span></div>
-  <div><b>04</b><strong>Experiments + demo</strong><span>Controlled evidence for the efficiency claim, then a live demonstration. <em>§5–6</em></span></div>
-</div>
-
-::: {.notes}
-- The talk follows the paper in four parts.
-- First: why video generation is so expensive, and the basics of flow matching.
-- Second: the main idea, the spatial pyramid, and how it is trained.
-- Third: how this extends to full videos with a temporal pyramid.
-- At the end: experiments and a live demo.
-:::
-
 ## Prior Approaches {.compact-title data-section="1 · Introduction"}
 
 <div class="baseline-grid">
@@ -81,27 +66,17 @@ Source: Jin et al., “Pyramidal Flow Matching for Efficient Video Generative Mo
 Pyramidal Flow seeks one end-to-end path that uses small grids early and one shared model throughout.
 :::
 
-::: {.notes}
-- There are two common ways to deal with the cost.
-- Option one: just pay for it. Train and generate at full resolution the whole time. That limits batch size, video length, or output resolution.
-- Option two: a cascade. Generate a small video first, then use separate upscaling models. That works, but you now train and maintain several models that share little with each other.
-- Side note: multi-resolution pyramids are an old idea in computer vision. Cascades are the generative version of that idea.
-- The goal of this paper: get the savings of the cascade, but keep everything in one single model and one process.
-:::
-
 ## Latent Video Generation {.compact-title data-section="2 · Preliminaries"}
 
-<div class="train-pipeline"><span>video frames</span><b>→</b><span>VAE encoder</span><b>→</b><span>compact latents</span><b>→</b><span>generation happens here</span><b>→</b><span>VAE decoder</span><b>→</b><span>RGB video</span></div>
+<div class="fm-lanes vae-lanes">
+  <div class="fm-lane training"><small>TRAINING · HOW THE MODEL SEES VIDEOS</small><div class="train-pipeline"><span>real video frames</span><b>→</b><span>VAE encoder</span><b>→</b><span>compact latents</span><b>→</b><span>DiT learns on these</span></div></div>
+  <div class="fm-lane generation"><small>GENERATION · NO INPUT FRAMES — STARTS FROM NOISE</small><div class="train-pipeline"><span>latent noise</span><b>→</b><span>generation — this talk</span><b>→</b><span>clean latent</span><b>→</b><span>VAE decoder</span><b>→</b><span>RGB video</span></div></div>
+</div>
+
+<div class="model-bridge"><span><b>Compression:</b> 8× height · 8× width · 8× time</span><span><b>Causal:</b> the first frame is encoded alone—an image is a valid one-frame video</span><span><b>Frozen:</b> trained once beforehand, not part of this paper's training</span></div>
 
 ::: {.takeaway}
 The VAE is a separate model—trained once, then frozen. Everything in this talk happens in its latent space.
-:::
-
-::: {.notes}
-- One practical point before the method: nothing here works on pixels directly.
-- A video VAE compresses the frames into a much smaller latent representation. At the very end, it decodes the result back into video.
-- The VAE is its own model. It is trained once, beforehand, and then frozen. It is not part of the generative model this paper trains.
-- Everything in the rest of the talk, the noise, the stages, the pyramid, happens in this latent space.
 :::
 
 ## Flow Matching vs. Diffusion {.compact-title data-section="2 · Preliminaries"}
@@ -111,15 +86,7 @@ The VAE is a separate model—trained once, then frozen. Everything in this talk
   <div class="accent"><strong>Flow matching</strong><span>chooses the path first—a deterministic ODE along straight interpolation lines from noise to data.</span></div>
 </div>
 
-<div class="model-bridge"><span><b>Like diffusion:</b> iterative generation from noise</span><span><b>Unlike diffusion:</b> the path is designed, not derived</span><span><b>Straight paths:</b> the rectified-flow / OT-style choice</span></div>
-
-::: {.notes}
-- Quick background before the main idea.
-- Diffusion first defines how to destroy data with noise, then learns to reverse that. The resulting path is complicated and needs many small steps.
-- Flow matching turns this around: first choose a simple path from noise to data, then train the model to follow it.
-- The usual choice is a straight line between noise and data. Straight paths can be followed with few, larger steps.
-- Both generate by starting from noise and improving step by step. The difference: in flow matching, the path is something we design.
-:::
+<div class="model-bridge"><span><b>Like diffusion:</b> iterative generation from noise</span><span><b>Unlike diffusion:</b> the path is designed, not derived</span><span><b>Straight paths:</b> tolerate few large Euler steps—on curved paths they overshoot</span></div>
 
 ## Flow Matching {.compact-title data-section="2 · Preliminaries"}
 
@@ -139,14 +106,6 @@ Nothing fixes the path's endpoints. A segment can start at one resolution and en
 Flow matching formulation: Lipman et al., “Flow Matching for Generative Modeling,” arXiv:2210.02747.
 :::
 
-::: {.notes}
-- How training works: take a real sample, take random noise, pick a random time between zero and one, and mix the two.
-- The training target is simply the difference between data and noise. So the model learns the direction from noise towards data, with a normal mean squared error loss.
-- Nothing is generated during training. That keeps training cheap.
-- At inference: start from noise, ask the model for the direction, take a small step, repeat, until we have the final video latent.
-- The key point for this paper: nothing forces the start and the end of a path segment to have the same resolution. That is the freedom the pyramid uses.
-:::
-
 ## The Spatial Pyramid {.compact-title data-section="3 · Pyramidal flow matching"}
 
 <div class="stage-rail">
@@ -157,15 +116,13 @@ Flow matching formulation: Lipman et al., “Flow Matching for Generative Modeli
   <div class="stage-card high"><small>STAGE 3</small><strong>full resolution</strong><span>texture<br/>and fine detail</span></div>
 </div>
 
-::: {.takeaway}
-The arrows are the hard part: crossing a stage boundary must preserve the signal *and* the noise statistics.
-:::
+<div class="claim-grid">
+  <div><strong>Start of stage k</strong><span>s<sub>k</sub> · Up(Down<sub>k+1</sub>(x₁)) + (1−s<sub>k</sub>) · n — the upsampled coarser latent, at higher noise.</span></div>
+  <div class="accent"><strong>End of stage k</strong><span>e<sub>k</sub> · Down<sub>k</sub>(x₁) + (1−e<sub>k</sub>) · n — this stage's own latent, at lower noise. Sharing the noise n keeps the path straight.</span></div>
+</div>
 
-::: {.notes}
-- The main idea: split the generation into three stages. Quarter resolution, half resolution, full resolution.
-- The first stage decides composition and rough motion. The later stages add shapes and finally fine detail.
-- One single model handles all three stages. The timestep tells it which stage it is in.
-- The arrows between the stages are the difficult part. I will come back to them in a moment.
+::: {.takeaway}
+Each stage is a straight flow between two noisy versions of the *same* video. The arrows are the hard part: crossing a boundary must preserve the signal *and* the noise statistics.
 :::
 
 ## Attention Cost {.compact-title data-section="3 · Pyramidal flow matching"}
@@ -176,14 +133,7 @@ The arrows are the hard part: crossing a stage boundary must preserve the signal
 </div>
 
 ::: {.takeaway}
-Most solver steps run on the small grids. The expensive full grid is only touched at the end.
-:::
-
-::: {.notes}
-- The savings come from simple counting.
-- At quarter resolution, each frame has a quarter of the width and a quarter of the height. That is one sixteenth of the tokens.
-- Attention cost grows roughly with the square of the token count. One sixteenth of the tokens means roughly one 256th of the attention cost per step.
-- And most solver steps run in these cheap stages. The full grid is only touched at the end.
+Most solver steps run on the small grids; the full grid is only touched at the end. One caveat: attention also spans history tokens—compressing those is the job of §4.
 :::
 
 ## Stages in Practice {.compact-title data-section="3 · Pyramidal flow matching"}
@@ -196,14 +146,6 @@ Most solver steps run on the small grids. The expensive full grid is only touche
 
 ::: {.takeaway}
 The coarse stage already chooses the scene; later stages spend compute on increasingly fine evidence.
-:::
-
-::: {.notes}
-- This is the same generated scene after each stage.
-- At 160 by 96: colors, layout, and rough motion are already fixed.
-- At 320 by 192: objects become recognizable.
-- At 640 by 384: edges and fine texture appear.
-- So the cheap first stage already makes the important decisions. Now to the arrows between the stages.
 :::
 
 ## Stage Transitions {.compact-title data-section="3 · Pyramidal flow matching"}
@@ -224,19 +166,11 @@ noise = self.sample_block_noise(
     bs, ch, temp, height, width
 )
 latents = alpha * latents + beta * noise</code></pre>
-<div class="math-mapping"><small>TRANSITION RULE</small><div><em>covariance correction</em><p>x<sub>next</sub> = α Up(x<sub>prev</sub>) + β n<sub>block</sub></p></div><span>α and β match the target covariance. <i>n</i><sub>block</sub> has negative off-diagonal correlation inside each 2 × 2 block, counteracting duplicated upsampled noise.</span></div>
+<div class="math-mapping"><small>TRANSITION RULE</small><div><em>covariance correction</em><p>x<sub>next</sub> = α Up(x<sub>prev</sub>) + β n<sub>block</sub></p></div><div><em>boundary constraint</em><p>e<sub>k+1</sub> = 2s<sub>k</sub> / (1+s<sub>k</sub>) — noise level is continuous across the jump</p></div><span><b>Goal:</b> match the mean <i>and</i> covariance of the start point the next stage saw in training. <i>n</i><sub>block</sub> has correlation −1/3 between the four pixels of each 2 × 2 block, exactly cancelling the +1 correlation that nearest-neighbour upsampling duplicates.</span></div>
 </div>
 
 ::: {.source}
 Jin et al., Sec. 3.2; repository implementation: <code>sample_block_noise()</code> and the stage-transition logic.
-:::
-
-::: {.notes}
-- When a stage finishes, the latent is upscaled to the next resolution.
-- The problem: simple upscaling copies each value into a two by two block. The noise inside a block becomes identical, and the next stage never saw inputs like that during training.
-- The fix: after upscaling, add a special correction noise and rescale. That restores the statistics the next stage expects.
-- The code on the left is the actual implementation. It is only a few lines.
-- Without this correction, quality breaks down at every stage boundary.
 :::
 
 ## Pyramidal Training {.compact-title data-section="3 · Pyramidal flow matching"}
@@ -251,20 +185,11 @@ Jin et al., Sec. 3.2; repository implementation: <code>sample_block_noise()</cod
 target = start_point - end_point
 prediction = dit(noisy_latents, timesteps)
 loss = (prediction - target).square().mean()</code></pre>
-<div class="math-mapping"><small>MATH BEHIND THE CODE</small><div><em>interpolate</em><p>xᵣ = r x<sub>start</sub> + (1−r)x<sub>end</sub></p><small class="ratio-direction">repository convention: r decreases 1 → 0</small></div><div><em>velocity target</em><p>uᵣ = x<sub>start</sub> − x<sub>end</sub></p></div><span>Sharing noise across resolutions couples adjacent stage endpoints—training sees the same boundary distributions the sampler produces.</span></div>
+<div class="math-mapping"><small>MATH BEHIND THE CODE</small><div><em>interpolate</em><p>xᵣ = r x<sub>start</sub> + (1−r)x<sub>end</sub></p><small class="ratio-direction">repository convention: r decreases 1 → 0</small></div><div><em>velocity target</em><p>uᵣ = x<sub>start</sub> − x<sub>end</sub></p></div><div><em>one time axis</em><p>[0,1] splits into windows [s<sub>k</sub>, e<sub>k</sub>] — t alone tells the DiT which stage it is in</p></div><span>Sharing noise across resolutions couples adjacent stage endpoints—training sees the same boundary distributions the sampler produces.</span></div>
 </div>
 
 ::: {.source}
 Jin et al., Sec. 3.1; repository implementation: <code>add_pyramid_noise_with_temporal_pyramid()</code>.
-:::
-
-::: {.notes}
-- Training has to match what happens at inference.
-- From one clean video, we build latents at all three resolutions.
-- For each training example: pick one stage, pick one point in time inside that stage, and build the noisy input for it.
-- The important trick: the noise is shared across the resolutions. That way the end of one stage and the start of the next fit together.
-- Apart from that, it is standard flow matching: mix, predict the direction, mean squared error.
-- Small detail for the code: in this repository the ratio runs from one down to zero. That is why the target is start minus end.
 :::
 
 ## The Temporal Pyramid {.compact-title data-section="4 · Video generation"}
@@ -281,13 +206,7 @@ Jin et al., Sec. 3.1; repository implementation: <code>add_pyramid_noise_with_te
 
 <div class="temporal-reasons"><span><b>Older context:</b> identity and scene state</span><span><b>Recent context:</b> local motion continuity</span><span><b>Current unit:</b> full-detail prediction</span></div>
 
-::: {.notes}
-- So far this was about a single chunk of frames. A unit is a short chunk of consecutive frames. The model generates a video unit by unit, and each new unit sees the previous ones.
-- The problem: this history grows with the video length. Keeping it at full resolution would be expensive again.
-- The solution: the same pyramid idea, but over time. The current unit is at full resolution. The most recent unit is kept at half resolution. Everything older is kept at quarter resolution.
-- The attention is causal: a unit can only look at the past, never at the future.
-- The trade-off: compressing the history saves a lot of compute, but it can cause drift in long videos.
-:::
+<div class="model-bridge"><span><b>Unit:</b> here one latent frame ≈ 8 video frames</span><span><b>No train/test gap:</b> training also conditions on the compressed history</span><span><b>Drift control:</b> history is lightly noised (strength ≤ 1/3) during training</span></div>
 
 ## Architecture {.compact-title data-section="4 · Video generation"}
 
@@ -308,15 +227,6 @@ Jin et al., Sec. 3.1; repository implementation: <code>add_pyramid_noise_with_te
 
 <div class="architecture-takeaway">Only the DiT is trained. The VAE and text encoder are frozen separate models; the scheduler is plain code. Savings come from feeding the DiT fewer high-resolution tokens.</div>
 
-::: {.notes}
-- A quick overview of the parts, and what is trained versus what is not.
-- The diffusion transformer in the middle is the only model this paper trains for generation. It sees the current noisy latent, the compressed history, the timestep, and the text, and predicts the direction.
-- The text encoder is a frozen, pretrained model.
-- The video VAE is also a separate model. It was trained beforehand and is frozen here. It only translates between pixels and latents.
-- The scheduler on the right is not a neural network at all. It is plain code: it runs the steps inside each stage, and the upscale plus correction between stages.
-- So no extra model per resolution. The savings come only from feeding fewer high-resolution tokens into the transformer.
-:::
-
 ## The Inference Loop {.compact-title data-section="5 · Project implementation"}
 
 <div class="repo-code-layout">
@@ -335,16 +245,7 @@ Jin et al., Sec. 3.1; repository implementation: <code>add_pyramid_noise_with_te
 <div class="code-annotations"><div><b>1</b><strong>Select the stage schedule</strong><span>Each resolution receives its own timestep range.</span></div><div><b>2</b><strong>Repair the stage boundary</strong><span>Nearest upsample, then covariance-matching block noise.</span></div><div><b>3</b><strong>Attach temporal context</strong><span>Past frame units are prepended at the stage's resolutions.</span></div><div><b>4</b><strong>Integrate the velocity</strong><span>The Euler scheduler advances the current latent.</span></div></div>
 </div>
 
-<div class="repo-path">Pyramid-Flow/pyramid_dit/pyramid_dit_for_video_gen_pipeline.py · lines 927–1031</div>
-
-::: {.notes}
-- This is the real code from the repository, only shortened to fit the slide.
-- The outer loop goes over the three resolution stages.
-- At the start of each new stage: upscale and add the correction noise. That is the boundary fix from before.
-- The inner loop is normal generation: attach the compressed history, ask the model for the direction, take one step.
-- For my project I [fill in: set up the repository and environment, ran inference locally, produced the stage videos shown earlier].
-- Practical: start the first demo generation in the background now, so it is ready at the end.
-:::
+<div class="repo-path">Pyramid-Flow/pyramid_dit/pyramid_dit_for_video_gen_pipeline.py · lines 927–1031 · own addition: export of each stage's intermediate output — the stage videos shown earlier</div>
 
 ## Convergence Ablation {.compact-title data-section="6 · Experiments"}
 
@@ -357,15 +258,9 @@ Jin et al., Sec. 3.1; repository implementation: <code>add_pyramid_noise_with_te
 Jin et al., Fig. 7 and Sec. 4.4.
 :::
 
-::: {.notes}
-- This is the clean comparison from the paper: same data, same batch size in tokens, same hyperparameters, same architecture. The only difference is the pyramid.
-- Result: the pyramid version reaches the same quality about three times faster.
-- The reason is simple: most training steps never touch the largest resolution.
-:::
-
 ## VBench Results {.compact-title data-section="6 · Experiments"}
 
-<div class="scale-strip"><span><b>20.7k</b> A100 GPU hours</span><span><b>768p</b> output</span><span><b>24 fps</b></span><span><b>5–10 s</b> clips</span></div>
+<div class="scale-strip"><span><b>open-source</b> data only</span><span><b>20.7k</b> A100 GPU hours</span><span><b>768p</b> output</span><span><b>24 fps</b></span><span><b>5–10 s</b> clips</span></div>
 
 <div class="quality-layout">
 <table class="quality-table">
@@ -384,32 +279,6 @@ Jin et al., Fig. 7 and Sec. 4.4.
 Jin et al., VBench comparison in Table 1. Scale figures describe the main public-data model. Systems differ in data, scale, infrastructure, and generation setup.
 :::
 
-::: {.notes}
-- Efficiency is only useful if quality holds up. This is the paper's main public model: about twenty thousand A100 GPU hours, 768p, 24 frames per second, clips of five to ten seconds.
-- On VBench, it has the best visual quality score in this comparison, and very smooth motion.
-- The weak point is the semantic score: it follows the prompt less accurately than the other systems here.
-- One caveat: the systems differ in data and scale, so this is a rough comparison, not a controlled one.
-:::
-
-## Related Approaches {.compact-title data-section="Related work"}
-
-<table class="quality-table">
-<thead><tr><th>Approach</th><th>Models</th><th>Generative path</th><th>Cost profile</th></tr></thead>
-<tbody>
-<tr><td>Cascaded diffusion <small>e.g. Imagen Video</small></td><td>several</td><td>separate process per resolution</td><td>each stage pays full steps at its scale</td></tr>
-<tr><td>Matryoshka diffusion</td><td>one</td><td>joint nested resolutions at every step</td><td>every step touches all scales</td></tr>
-<tr class="ours"><td>Pyramid Flow</td><td>one</td><td>single flow, one scale at a time</td><td>early steps stay coarse</td></tr>
-</tbody>
-</table>
-
-::: {.notes}
-- Before the conclusion, a short comparison with the closest alternatives.
-- Cascades: several separately trained models, one per resolution. It works, but the models share nothing.
-- Matryoshka diffusion: one model, but it processes all resolutions together at every single step. So every step still pays for the full grid.
-- Pyramid Flow: one model, one process, one resolution at a time. The early steps stay cheap.
-- This combination is the actual contribution of the paper.
-:::
-
 ## Conclusion {.compact-title data-section="7 · Conclusion"}
 
 <div class="tradeoff-grid">
@@ -421,30 +290,10 @@ Jin et al., VBench comparison in Table 1. Scale figures describe the main public
 [Paper](https://arxiv.org/abs/2410.05954) · [Code](https://github.com/jy0205/Pyramid-Flow) · [Project page and videos](https://pyramid-flow.github.io/)
 :::
 
-::: {.notes}
-- What the paper gets right: compute follows the information. One model shares knowledge across all scales. The spatial and temporal savings add up.
-- What remains difficult: the stage transitions need the careful noise correction. The compressed history can cause inconsistencies in long videos. Only step-by-step generation is supported, no keyframe interpolation.
-- And the final quality still depends on the data and the base model.
-:::
-
 ## One path · three resolutions · one shared model {.final-slide data-section="Closing"}
 
 <div class="final-stage"><small>PYRAMIDAL FLOW MATCHING</small><strong>Use coarse grids while uncertainty is high.<br/>Increase resolution as structure becomes reliable.</strong><span>Live demo → questions</span></div>
 
-::: {.notes}
-- The takeaway in one sentence: use coarse resolution while there is little information, and increase the resolution as the content becomes reliable.
-- That principle, applied in space and in time, is the whole paper.
-- Now to the demo.
-:::
-
 ## Live Demo {.demo-slide data-section="8 · Demo"}
 
 <div class="demo-stage"><small>PYRAMID FLOW</small><strong>DEMO</strong><span>Local Gradio interface</span></div>
-
-::: {.notes}
-- Before the talk: start the app with uv run app.py and keep the browser tab open behind the slides.
-- Show the prompt, the settings, and the finished video.
-- If the generation is still running, explain again: coarse structure first, then upscale and correct, then fine detail.
-- If anything fails, play assets/demo.mp4 instead.
-- End here and ask for questions.
-:::
